@@ -1,0 +1,84 @@
+%object creation 
+ 
+ 
+clc; 
+clear; 
+%PART 1 
+%3 Objects
+detectFace = vision.CascadeObjectDetector(); %VJ algo 
+pointTracker = vision.PointTracker('MaxBidirectionalError', 2);%KLT - FW/BW thr. (i-1)th to (i) and so on 
+cam = webcam(); %setting up laptop webcam for use 
+% Capture a frame to get its size. 
+Frame = snapshot(cam); 
+frameSize = size(Frame); 
+% playback object. 
+videoPlayer = vision.VideoPlayer('Position', [50 50 [frameSize(2), frameSize(1)]]); %size and posn. in pixels
+%TODOTASKS 
+%code , snapshots , conf , problem statement , algorithm , result , all in 
+%4-6 pages + PCA Report 
+%PART TWO 
+Trial = true; 
+totalPoints = 0; 
+frameCount = 0; 
+%check if true 
+while (Trial) 
+       % Take in the next frame     
+       Frame = snapshot(cam);     
+       NewFrame = rgb2gray(Frame);     
+       frameCount = frameCount + 1;
+       %setting up the bounding box     
+       if totalPoints < 9         
+           % Detection mode         
+           bbox = detectFace.step(NewFrame);
+            if ~(isempty(bbox))             
+                % find corners             
+                points = detectMinEigenFeatures(NewFrame, 'ROI', bbox(1, :)); 
+                  % resetting values 
+                    xyPoints = points.Location;             
+                    totalPoints = size(xyPoints,1);             
+                    release(pointTracker);             
+                    initialize(pointTracker, xyPoints, NewFrame); 
+                     % copy the points found             
+                     oldPoints = xyPoints;               
+                     % rect[x, y, w, h] ---> Mx2[x,y]             
+                     % bbox shows orientations 
+                        bboxPoints = bbox2points(bbox(1, :));               
+                        % Convert the b corners into [xi yi] form in insertShape.               
+                        bboxPolygon = reshape(bboxPoints', 1, []); 
+                           % Show a bbox around the face             
+                           Frame = insertShape(Frame, 'Polygon', bboxPolygon, 'LineWidth', 3);
+                              % Display detected corners             
+                              Frame = insertMarker(Frame, xyPoints, '+', 'Color', 'white');         
+            end
+       else
+           % Tracker
+                   [xyPoints, isFound] = step(pointTracker, NewFrame);         
+                   visiblePoints = xyPoints(isFound, :);
+                      oldInliers = oldPoints(isFound, :);          
+                      totalPoints = size(visiblePoints, 1);           
+                      if (totalPoints >= 9) 
+                            % Estimate the geometric transformation between the old points             
+                            % and the new points.             
+                            [xform, oldInliers, visiblePoints] = estimateGeometricTransform(...                 
+                                oldInliers, visiblePoints, 'similarity', 'MaxDistance', 4); 
+                             % transformation for bbox 
+                               bboxPoints = transformPointsForward(xform, bboxPoints);               
+                               % convert the corners into the [xi yi] for i=1,2,3,4               
+                               bboxPolygon = reshape(bboxPoints', 1, []);
+                                 % box around the face being tracked             
+                                 Frame = insertShape(Frame, 'Polygon', bboxPolygon, 'LineWidth', 3);               
+                                 % show the tracked points             
+                                 Frame = insertMarker(Frame, visiblePoints, '+', 'Color', 'green');
+                                   % reset the points             
+                                   oldPoints = visiblePoints;             
+                                   setPoints(pointTracker, oldPoints);         
+                      end
+       end
+         % show the frame     
+         step(videoPlayer, Frame);       
+         % check if player is closed     
+         Trial = isOpen(videoPlayer); 
+end 
+ 
+ 
+ 
